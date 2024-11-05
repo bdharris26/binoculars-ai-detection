@@ -1,5 +1,6 @@
 import gradio as gr
 import pandas as pd
+import os
 from binoculars import Binoculars
 
 # Initialize the Binoculars model
@@ -7,39 +8,55 @@ bino = Binoculars()
 
 def process_csv(file):
     try:
-        df = pd.read_csv(file)
+        # Check if file is None or empty
+        if file is None:
+            raise ValueError("No file uploaded")
+            
+        # Check file extension
+        filename = file.name
+        if not filename.lower().endswith('.csv'):
+            raise ValueError("File must be a CSV")
+
+        # Read and validate CSV
+        df = pd.read_csv(file.name)
         if 'text' not in df.columns:
-            raise ValueError("CSV file must contain a 'text' column.")
+            raise ValueError("CSV file must contain a 'text' column")
         
+        # Process the text
         df['prediction'] = bino.predict(df['text'].tolist())
         df['raw_score'] = bino.compute_score(df['text'].tolist())
         return df
     except Exception as e:
-        raise gr.Error(f"Error processing file: {str(e)}")
+        raise gr.Error(str(e))
 
 def batch_interface():
     with gr.Blocks() as demo:
         with gr.Row():
             gr.Markdown("## Batch Processing for AI Text Detection")
         with gr.Row():
-            csv_input = gr.File(label="Upload CSV", file_types=["csv"])
+            csv_input = gr.File(
+                label="Upload CSV", 
+                file_types=[".csv"],  # Changed to include dot
+                type="file"
+            )
         with gr.Row():
-            # Fix: Changed datatype parameter to correct types
             output = gr.Dataframe(
                 headers=["text", "prediction", "raw_score"],
-                datatype=["str", "str", "number"]  # Changed 'float' to 'number'
+                datatype=["str", "str", "number"],
+                visible=True
             )
         with gr.Row():
             download_button = gr.Button("Download Results")
         
-        def process_and_display(file):
-            if file is None:
-                return None
-            return process_csv(file)
+        # Update event handlers
+        csv_input.change(
+            fn=process_csv,
+            inputs=csv_input,
+            outputs=output
+        )
         
-        csv_input.change(process_and_display, inputs=csv_input, outputs=output)
         download_button.click(
-            lambda df: df.to_csv(index=False) if df is not None else None,
+            fn=lambda df: df.to_csv(index=False) if df is not None else None,
             inputs=output,
             outputs=gr.File(label="Download CSV")
         )
@@ -47,7 +64,6 @@ def batch_interface():
     return demo
 
 if __name__ == "__main__":
-    # Launch the Gradio interface with custom configurations
     batch_interface().launch(
         share=True,
         server_name="0.0.0.0",
