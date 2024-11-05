@@ -2,6 +2,7 @@ import gradio as gr
 import pandas as pd
 import os
 from binoculars import Binoculars
+import tempfile
 
 # Initialize the Binoculars model
 bino = Binoculars()
@@ -36,7 +37,7 @@ def batch_interface():
         with gr.Row():
             csv_input = gr.File(
                 label="Upload CSV",
-                file_types=[".csv"],  # Add dot prefix for file extension
+                file_types=[".csv"],
                 type="filepath"
             )
         with gr.Row():
@@ -48,6 +49,15 @@ def batch_interface():
         with gr.Row():
             download_button = gr.Button("Download Results")
         
+        def save_df(df):
+            if df is None:
+                return None
+            # Create temporary file with proper extension
+            temp_dir = tempfile.gettempdir()
+            output_path = os.path.join(temp_dir, "results.csv")
+            df.to_csv(output_path, index=False)
+            return output_path
+        
         csv_input.change(
             fn=process_csv,
             inputs=csv_input,
@@ -55,7 +65,7 @@ def batch_interface():
         )
         
         download_button.click(
-            fn=lambda df: df.to_csv(index=False) if df is not None else None,
+            fn=save_df,
             inputs=output,
             outputs=gr.File(label="Download CSV")
         )
