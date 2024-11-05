@@ -22,7 +22,7 @@ def run_detector(input_str):
         return "", ""
     prediction = BINO.predict(input_str)
     raw_score = compute_raw_score(input_str)
-    return f"{prediction}", f"Raw Score: {raw_score}"
+    return f"{prediction}", f"{raw_score}"
 
 
 def change_mode(mode):
