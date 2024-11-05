@@ -1,3 +1,14 @@
+"""
+This script runs the Binoculars AI text detection on a given dataset and computes relevant metrics.
+
+The main components of this script are:
+- Argument parsing for dataset and scoring configurations.
+- Initialization of the Binoculars model.
+- Loading and processing the dataset.
+- Scoring human and machine-generated text.
+- Computing and saving metrics and experiment results.
+"""
+
 from binoculars.detector import Binoculars
 from binoculars.detector import BINOCULARS_ACCURACY_THRESHOLD as THRESHOLD
 from experiments.utils import convert_to_pandas, save_experiment
@@ -70,6 +81,8 @@ def main(args):
 
 
 if __name__ == "__main__":
+    # Entry point for the script
+    # Parse arguments and run the main function
     print("=" * 60, "START", "=" * 60)
 
     # Set logging at the CRITICAL level to avoid seeing loaded datasets from cache

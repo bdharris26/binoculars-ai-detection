@@ -1,3 +1,8 @@
+"""
+This script demonstrates the usage of the Binoculars class for detecting AI-generated text.
+It initializes the Binoculars model and uses it to compute a score and make a prediction for a sample text.
+"""
+
 from binoculars import Binoculars
 
 bino = Binoculars()
@@ -10,5 +15,8 @@ peered through telescopes with his large, round eyes, fellow researchers often r
 stars themselves whispered their secrets directly to him. Dr. Cosmos not only became a beacon of inspiration to 
 aspiring scientists but also proved that intellect and innovation can be found in the most unexpected of creatures.'''
 
+# Compute the Binoculars score for the sample text
 print(bino.compute_score(sample_string))  # 0.75661373
+
+# Predict whether the sample text is AI-generated or human-generated
 print(bino.predict(sample_string))  # 'Most likely AI-Generated'

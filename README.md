@@ -69,6 +69,20 @@ Binoculars is more proficient in detecting English language text compared to oth
 for academic purposes only and should not be considered as a consumer product. We also strongly caution against using
 Binoculars (or any detector) without human supervision.
 
+## File Descriptions
+
+- `app.py`: Launches the Gradio interface for the Binoculars AI text detection demo.
+- `binoculars/__init__.py`: Initializes the Binoculars package, providing the main class for AI text detection.
+- `binoculars/detector.py`: Contains the main class for AI text detection using the Binoculars method.
+- `binoculars/metrics.py`: Contains functions to compute perplexity and entropy metrics for AI text detection.
+- `binoculars/utils.py`: Contains utility functions for the Binoculars package.
+- `demo/demo.py`: Contains the Gradio interface for the Binoculars AI text detection demo.
+- `experiments/jobs.sh`: Runs experiments for the CC News, CNN, and PubMed datasets with generations from the LLaMA-2-13B model.
+- `experiments/run.py`: Runs the Binoculars AI text detection on a given dataset and computes relevant metrics.
+- `experiments/utils.py`: Contains utility functions for the Binoculars package.
+- `main.py`: Demonstrates the usage of the Binoculars class for detecting AI-generated text.
+- `README.md`: Provides an overview of the Binoculars project, installation instructions, usage examples, and file descriptions.
+
 ## Cite our work
 
 If you find this work useful, please cite our paper:

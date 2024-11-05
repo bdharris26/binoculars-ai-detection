@@ -1,3 +1,10 @@
+"""
+This module contains functions to compute perplexity and entropy metrics for AI text detection.
+
+The `perplexity` function calculates the perplexity of a given text based on the logits from a language model.
+The `entropy` function calculates the entropy between the logits of two language models for a given text.
+"""
+
 import numpy as np
 import torch
 import transformers
@@ -10,6 +17,18 @@ def perplexity(encoding: transformers.BatchEncoding,
                logits: torch.Tensor,
                median: bool = False,
                temperature: float = 1.0):
+    """
+    Calculates the perplexity of a given text based on the logits from a language model.
+
+    Args:
+        encoding (transformers.BatchEncoding): The tokenized batch of text.
+        logits (torch.Tensor): The logits from the language model.
+        median (bool): Whether to use the median of the cross-entropy loss.
+        temperature (float): The temperature to use for scaling the logits.
+
+    Returns:
+        np.ndarray: The perplexity of the given text.
+    """
     shifted_logits = logits[..., :-1, :].contiguous() / temperature
     shifted_labels = encoding.input_ids[..., 1:].contiguous()
     shifted_attention_mask = encoding.attention_mask[..., 1:].contiguous()
@@ -34,6 +53,21 @@ def entropy(p_logits: torch.Tensor,
             median: bool = False,
             sample_p: bool = False,
             temperature: float = 1.0):
+    """
+    Calculates the entropy between the logits of two language models for a given text.
+
+    Args:
+        p_logits (torch.Tensor): The logits from the first language model.
+        q_logits (torch.Tensor): The logits from the second language model.
+        encoding (transformers.BatchEncoding): The tokenized batch of text.
+        pad_token_id (int): The token ID used for padding.
+        median (bool): Whether to use the median of the cross-entropy loss.
+        sample_p (bool): Whether to sample from the probability distribution of the first model.
+        temperature (float): The temperature to use for scaling the logits.
+
+    Returns:
+        np.ndarray: The entropy between the logits of the two language models.
+    """
     vocab_size = p_logits.shape[-1]
     total_tokens_available = q_logits.shape[-2]
     p_scores, q_scores = p_logits / temperature, q_logits / temperature
