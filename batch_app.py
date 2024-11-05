@@ -34,11 +34,10 @@ def batch_interface():
         with gr.Row():
             gr.Markdown("## Batch Processing for AI Text Detection")
         with gr.Row():
-            # Fix: Changed type to 'filepath' instead of 'file'
             csv_input = gr.File(
-                label="Upload CSV", 
-                file_types=["csv"],  # Removed dot prefix
-                type="filepath"      # Changed from 'file' to 'filepath'
+                label="Upload CSV",
+                file_types=[".csv"],  # Add dot prefix for file extension
+                type="filepath"
             )
         with gr.Row():
             output = gr.Dataframe(
@@ -49,7 +48,6 @@ def batch_interface():
         with gr.Row():
             download_button = gr.Button("Download Results")
         
-        # Update event handlers
         csv_input.change(
             fn=process_csv,
             inputs=csv_input,
