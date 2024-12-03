@@ -3,35 +3,36 @@ import pandas as pd
 import os
 from binoculars import Binoculars
 import tempfile
+from tqdm import tqdm
 
-# Initialize the Binoculars model
+# Initialize once, not per file
 bino = Binoculars()
 
-def process_file(file):
-    try:
-        # Check if file is None or empty
-        if file is None:
-            raise ValueError("No file uploaded")
-            
-        # Check file extension
-        filename = file.name
-        if filename.lower().endswith('.csv'):
-            df = pd.read_csv(file.name)
-        elif filename.lower().endswith('.xlsx'):
-            df = pd.read_excel(file.name)
-        else:
-            raise ValueError("File must be a CSV or XLSX")
-
-        # Read and validate file
-        if 'text' not in df.columns:
-            raise ValueError("File must contain a 'text' column")
+def process_file(file, batch_size):
+    if file is None:
+        return None
         
-        # Process the text
-        df['prediction'] = bino.predict(df['text'].tolist())
-        df['raw_score'] = bino.compute_score(df['text'].tolist())
-        return df
+    try:
+        # Stream reading in chunks
+        chunks = []
+        if file.name.endswith('.csv'):
+            chunk_iterator = pd.read_csv(file.name, chunksize=batch_size)
+        else:
+            chunk_iterator = pd.read_excel(file.name, chunksize=batch_size)
+            
+        for chunk in tqdm(chunk_iterator):
+            if 'text' not in chunk.columns:
+                raise gr.Error("Input file must contain a 'text' column")
+                
+            # Process chunk
+            chunk['prediction'] = bino.predict(chunk['text'].tolist())
+            chunk['raw_score'] = bino.compute_score(chunk['text'].tolist())
+            chunks.append(chunk)
+            
+        return pd.concat(chunks, ignore_index=True)
+        
     except Exception as e:
-        raise gr.Error(str(e))
+        raise gr.Error(f"Error processing file: {str(e)}")
 
 def batch_interface():
     with gr.Blocks() as demo:
@@ -42,6 +43,13 @@ def batch_interface():
                 label="Upload CSV or XLSX",
                 file_types=[".csv", ".xlsx"],
                 type="filepath"
+            )
+            batch_size = gr.Slider(
+                minimum=1,
+                maximum=32,
+                value=8,
+                step=1,
+                label="Batch Size"
             )
         with gr.Row():
             output = gr.Dataframe(
@@ -69,7 +77,7 @@ def batch_interface():
         
         file_input.change(
             fn=process_file,
-            inputs=file_input,
+            inputs=[file_input, batch_size],
             outputs=output
         )
         
