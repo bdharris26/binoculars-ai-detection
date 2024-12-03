@@ -57,10 +57,11 @@ def batch_interface():
                 return None
             # Create temporary file with proper extension
             temp_dir = tempfile.gettempdir()
-            if df.columns[0].endswith('.csv'):
+            _, file_extension = os.path.splitext(df.columns[0])
+            if file_extension == '.csv':
                 output_path = os.path.join(temp_dir, "results.csv")
                 df.to_csv(output_path, index=False)
-            elif df.columns[0].endswith('.xlsx'):
+            elif file_extension == '.xlsx':
                 output_path = os.path.join(temp_dir, "results.xlsx")
                 df.to_excel(output_path, index=False)
             return output_path
