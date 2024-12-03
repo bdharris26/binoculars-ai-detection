@@ -13,24 +13,35 @@ def process_file(file, batch_size):
         return None
         
     try:
-        # Stream reading in chunks
-        chunks = []
         if file.name.endswith('.csv'):
+            # Process CSV in chunks
+            chunks = []
             chunk_iterator = pd.read_csv(file.name, chunksize=batch_size)
+            for chunk in tqdm(chunk_iterator, desc="Processing CSV"):
+                if 'text' not in chunk.columns:
+                    raise gr.Error("Input file must contain a 'text' column")
+                chunk['prediction'] = bino.predict(chunk['text'].tolist())
+                chunk['raw_score'] = bino.compute_score(chunk['text'].tolist())
+                chunks.append(chunk)
+            return pd.concat(chunks, ignore_index=True)
         else:
-            chunk_iterator = pd.read_excel(file.name, chunksize=batch_size)
-            
-        for chunk in tqdm(chunk_iterator):
-            if 'text' not in chunk.columns:
+            # Process Excel file in memory with batches
+            df = pd.read_excel(file.name)
+            if 'text' not in df.columns:
                 raise gr.Error("Input file must contain a 'text' column")
-                
-            # Process chunk
-            chunk['prediction'] = bino.predict(chunk['text'].tolist())
-            chunk['raw_score'] = bino.compute_score(chunk['text'].tolist())
-            chunks.append(chunk)
             
-        return pd.concat(chunks, ignore_index=True)
-        
+            predictions = []
+            scores = []
+            
+            for i in tqdm(range(0, len(df), batch_size), desc="Processing Excel"):
+                batch = df['text'].iloc[i:i+batch_size].tolist()
+                predictions.extend(bino.predict(batch))
+                scores.extend(bino.compute_score(batch))
+            
+            df['prediction'] = predictions
+            df['raw_score'] = scores
+            return df
+            
     except Exception as e:
         raise gr.Error(f"Error processing file: {str(e)}")
 
