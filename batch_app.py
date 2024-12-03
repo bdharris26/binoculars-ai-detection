@@ -52,20 +52,20 @@ def batch_interface():
         with gr.Row():
             download_button = gr.Button("Download Results")
         
-        def save_df(df):
-            output_path = None
+        def save_df(df): 
             if df is None:
                 return None
-            # Create temporary file with proper extension
+                
+            # Create temporary file
             temp_dir = tempfile.gettempdir()
-            _, file_extension = os.path.splitext(df.columns[0])
-            if file_extension == '.csv':
-                output_path = os.path.join(temp_dir, "results.csv")
-                df.to_csv(output_path, index=False)
-            elif file_extension == '.xlsx':
-                output_path = os.path.join(temp_dir, "results.xlsx")
+            output_path = os.path.join(temp_dir, "results.xlsx")
+            
+            try:
+                # Always save as xlsx since it preserves data types better
                 df.to_excel(output_path, index=False)
-            return output_path
+                return output_path
+            except Exception as e:
+                raise gr.Error(f"Error saving results: {str(e)}")
         
         file_input.change(
             fn=process_file,
@@ -76,7 +76,7 @@ def batch_interface():
         download_button.click(
             fn=save_df,
             inputs=output,
-            outputs=gr.File(label="Download CSV or XLSX")
+            outputs=gr.File(label="Download Results", file_types=[".xlsx"])
         )
     
     return demo
