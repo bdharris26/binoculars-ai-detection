@@ -53,6 +53,7 @@ def batch_interface():
             download_button = gr.Button("Download Results")
         
         def save_df(df):
+            output_path = None
             if df is None:
                 return None
             # Create temporary file with proper extension
