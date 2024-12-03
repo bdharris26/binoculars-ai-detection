@@ -7,7 +7,7 @@ import tempfile
 # Initialize the Binoculars model
 bino = Binoculars()
 
-def process_csv(file):
+def process_file(file):
     try:
         # Check if file is None or empty
         if file is None:
@@ -15,13 +15,16 @@ def process_csv(file):
             
         # Check file extension
         filename = file.name
-        if not filename.lower().endswith('.csv'):
-            raise ValueError("File must be a CSV")
+        if filename.lower().endswith('.csv'):
+            df = pd.read_csv(file.name)
+        elif filename.lower().endswith('.xlsx'):
+            df = pd.read_excel(file.name)
+        else:
+            raise ValueError("File must be a CSV or XLSX")
 
-        # Read and validate CSV
-        df = pd.read_csv(file.name)
+        # Read and validate file
         if 'text' not in df.columns:
-            raise ValueError("CSV file must contain a 'text' column")
+            raise ValueError("File must contain a 'text' column")
         
         # Process the text
         df['prediction'] = bino.predict(df['text'].tolist())
@@ -35,9 +38,9 @@ def batch_interface():
         with gr.Row():
             gr.Markdown("## Batch Processing for AI Text Detection")
         with gr.Row():
-            csv_input = gr.File(
-                label="Upload CSV",
-                file_types=[".csv"],
+            file_input = gr.File(
+                label="Upload CSV or XLSX",
+                file_types=[".csv", ".xlsx"],
                 type="filepath"
             )
         with gr.Row():
@@ -54,20 +57,24 @@ def batch_interface():
                 return None
             # Create temporary file with proper extension
             temp_dir = tempfile.gettempdir()
-            output_path = os.path.join(temp_dir, "results.csv")
-            df.to_csv(output_path, index=False)
+            if df.columns[0].endswith('.csv'):
+                output_path = os.path.join(temp_dir, "results.csv")
+                df.to_csv(output_path, index=False)
+            elif df.columns[0].endswith('.xlsx'):
+                output_path = os.path.join(temp_dir, "results.xlsx")
+                df.to_excel(output_path, index=False)
             return output_path
         
-        csv_input.change(
-            fn=process_csv,
-            inputs=csv_input,
+        file_input.change(
+            fn=process_file,
+            inputs=file_input,
             outputs=output
         )
         
         download_button.click(
             fn=save_df,
             inputs=output,
-            outputs=gr.File(label="Download CSV")
+            outputs=gr.File(label="Download CSV or XLSX")
         )
     
     return demo
