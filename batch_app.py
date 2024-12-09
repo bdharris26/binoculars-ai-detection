@@ -12,50 +12,47 @@ bino = Binoculars()
 def create_score_plot(df):
     if df is None or len(df) == 0:
         return None
-    fig = px.histogram(df, x="raw_score", 
-                      title="Distribution of AI Detection Scores",
-                      labels={"raw_score": "AI Detection Score"},
-                      nbins=20)
+    fig = px.histogram(df, x="raw_score",
+                       title="Distribution of AI Detection Scores",
+                       labels={"raw_score": "AI Detection Score"},
+                       nbins=20)
     fig.update_layout(showlegend=False)
     return fig
 
 def process_file(file, batch_size):
     if file is None:
         return None, None
-        
+
     try:
-        if file.name.endswith('.csv'):
-            # Process CSV in chunks
-            chunks = []
-            chunk_iterator = pd.read_csv(file.name, chunksize=batch_size)
-            for chunk in tqdm(chunk_iterator, desc="Processing CSV"):
-                if 'text' not in chunk.columns:
-                    raise gr.Error("Input file must contain a 'text' column")
-                chunk['prediction'] = bino.predict(chunk['text'].tolist())
-                chunk['raw_score'] = bino.compute_score(chunk['text'].tolist())
-                chunks.append(chunk)
-            df = pd.concat(chunks, ignore_index=True)
-            return df, create_score_plot(df)
-        else:
-            # Process Excel file in memory with batches
+        # Determine file type
+        file_ext = os.path.splitext(file.name)[1].lower()
+        if file_ext == '.csv':
+            df_iterator = pd.read_csv(file.name, chunksize=batch_size)
+        elif file_ext == '.xlsx':
             df = pd.read_excel(file.name)
-            if 'text' not in df.columns:
+            # Simulate an iterator for uniformity
+            df_iterator = (df[i:i+batch_size] for i in range(0, len(df), batch_size))
+        else:
+            raise gr.Error("Unsupported file type. Please upload a CSV or XLSX file.")
+
+        chunks = []
+        for chunk in tqdm(df_iterator, desc="Processing File"):
+            if 'text' not in chunk.columns:
                 raise gr.Error("Input file must contain a 'text' column")
             
-            predictions = []
-            scores = []
-            
-            for i in tqdm(range(0, len(df), batch_size), desc="Processing Excel"):
-                batch = df['text'].iloc[i:i+batch_size].tolist()
-                predictions.extend(bino.predict(batch))
-                scores.extend(bino.compute_score(batch))
-            
-            df['prediction'] = predictions
-            df['raw_score'] = scores
-            return df, create_score_plot(df)
-            
+            text_list = chunk['text'].tolist()
+            predictions = bino.predict(text_list)
+            scores = bino.compute_score(text_list)
+
+            chunk['prediction'] = predictions
+            chunk['raw_score'] = scores
+            chunks.append(chunk)
+
+        df = pd.concat(chunks, ignore_index=True)
+        return df, create_score_plot(df)
+
     except Exception as e:
-        raise gr.Error(f"Error processing file: {str(e)}")
+        raise gr.Error(f"Error processing file: {e}")
 
 def batch_interface():
     with gr.Blocks(css="""
@@ -121,16 +118,6 @@ def batch_interface():
                 return output_path
             except Exception as e:
                 raise gr.Error(f"Error saving results: {str(e)}")
-        
-        def update_plot(df):
-            if df is None or len(df) == 0:
-                return None
-            fig = px.histogram(df, x="raw_score", 
-                             title="Distribution of AI Detection Scores",
-                             labels={"raw_score": "AI Detection Score"},
-                             nbins=20)
-            fig.update_layout(showlegend=False)
-            return fig
 
         # Update existing file_input change handler to include plot update
         file_input.change(
@@ -141,7 +128,7 @@ def batch_interface():
 
         # Add plot update when dataframe changes
         output.change(
-            fn=update_plot,
+            fn=create_score_plot,
             inputs=[output],
             outputs=[plot]
         )
