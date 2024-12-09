@@ -4,6 +4,7 @@ import os
 from binoculars import Binoculars
 import tempfile
 from tqdm import tqdm
+import plotly.express as px
 
 # Initialize once, not per file
 bino = Binoculars()
@@ -52,6 +53,19 @@ def batch_interface():
             white-space: pre-wrap;
             word-wrap: break-word;
         }
+        .plot-container {
+            height: 300px;
+        }
+        .fixed-height-row {
+            max-height: 100px !important;
+            overflow-y: auto !important;
+        }
+        .fixed-height-row td {
+            max-height: 100px !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            white-space: nowrap !important;
+        }
         """) as demo:
         with gr.Row():
             gr.Markdown("## Batch Processing for AI Text Detection")
@@ -74,8 +88,11 @@ def batch_interface():
                 datatype=["str", "str", "number"],
                 visible=True,
                 wrap=True,
-                column_widths=["60%", "20%", "20%"]
+                column_widths=["60%", "20%", "20%"],
+                elem_classes=["fixed-height-row"]
             )
+        with gr.Row():
+            plot = gr.Plot(label="Score Distribution")
         with gr.Row():
             download_button = gr.Button("Download Results")
         
@@ -94,10 +111,28 @@ def batch_interface():
             except Exception as e:
                 raise gr.Error(f"Error saving results: {str(e)}")
         
+        def update_plot(df):
+            if df is None or len(df) == 0:
+                return None
+            fig = px.histogram(df, x="raw_score", 
+                             title="Distribution of AI Detection Scores",
+                             labels={"raw_score": "AI Detection Score"},
+                             nbins=20)
+            fig.update_layout(showlegend=False)
+            return fig
+
+        # Update existing file_input change handler to include plot update
         file_input.change(
             fn=process_file,
             inputs=[file_input, batch_size],
-            outputs=output
+            outputs=[output, plot]
+        )
+
+        # Add plot update when dataframe changes
+        output.change(
+            fn=update_plot,
+            inputs=[output],
+            outputs=[plot]
         )
         
         download_button.click(
