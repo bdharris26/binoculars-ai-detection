@@ -46,7 +46,13 @@ def process_file(file, batch_size):
         raise gr.Error(f"Error processing file: {str(e)}")
 
 def batch_interface():
-    with gr.Blocks() as demo:
+    with gr.Blocks(css="""
+        .wrap-text {
+            max-width: 400px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        """) as demo:
         with gr.Row():
             gr.Markdown("## Batch Processing for AI Text Detection")
         with gr.Row():
@@ -66,7 +72,9 @@ def batch_interface():
             output = gr.Dataframe(
                 headers=["text", "prediction", "raw_score"],
                 datatype=["str", "str", "number"],
-                visible=True
+                visible=True,
+                wrap=True,
+                column_widths=["60%", "20%", "20%"]
             )
         with gr.Row():
             download_button = gr.Button("Download Results")
