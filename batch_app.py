@@ -68,7 +68,7 @@ def batch_interface():
             height: 300px;
         }
         .fixed-height-row {
-            max-height: 100px !important;
+            max-height: 1000px !important;
             overflow-y: auto !important;
         }
         .fixed-height-row td {
@@ -99,7 +99,7 @@ def batch_interface():
                 datatype=["str", "str", "number"],
                 visible=True,
                 wrap=True,
-                column_widths=["60%", "20%", "20%"],
+                column_widths=["65%", "20%", "15%"],
                 elem_classes=["fixed-height-row"]
             )
         with gr.Row():
