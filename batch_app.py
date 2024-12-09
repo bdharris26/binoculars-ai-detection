@@ -9,9 +9,19 @@ import plotly.express as px
 # Initialize once, not per file
 bino = Binoculars()
 
+def create_score_plot(df):
+    if df is None or len(df) == 0:
+        return None
+    fig = px.histogram(df, x="raw_score", 
+                      title="Distribution of AI Detection Scores",
+                      labels={"raw_score": "AI Detection Score"},
+                      nbins=20)
+    fig.update_layout(showlegend=False)
+    return fig
+
 def process_file(file, batch_size):
     if file is None:
-        return None
+        return None, None
         
     try:
         if file.name.endswith('.csv'):
@@ -24,7 +34,8 @@ def process_file(file, batch_size):
                 chunk['prediction'] = bino.predict(chunk['text'].tolist())
                 chunk['raw_score'] = bino.compute_score(chunk['text'].tolist())
                 chunks.append(chunk)
-            return pd.concat(chunks, ignore_index=True)
+            df = pd.concat(chunks, ignore_index=True)
+            return df, create_score_plot(df)
         else:
             # Process Excel file in memory with batches
             df = pd.read_excel(file.name)
@@ -41,7 +52,7 @@ def process_file(file, batch_size):
             
             df['prediction'] = predictions
             df['raw_score'] = scores
-            return df
+            return df, create_score_plot(df)
             
     except Exception as e:
         raise gr.Error(f"Error processing file: {str(e)}")
