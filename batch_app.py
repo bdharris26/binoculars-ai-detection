@@ -1,6 +1,7 @@
 import gradio as gr
 import pandas as pd
 import os
+import argparse
 from binoculars import Binoculars
 import tempfile
 from tqdm import tqdm
@@ -8,8 +9,17 @@ import plotly.express as px
 import random
 import re
 
-# Initialize once, not per file
-bino = Binoculars()
+# Add argument parsing at the top
+parser = argparse.ArgumentParser()
+parser.add_argument("--observer", default="tiiuae/falcon-7b", help="Observer model name or path")
+parser.add_argument("--performer", default="tiiuae/falcon-7b-instruct", help="Performer model name or path")
+args = parser.parse_args()
+
+# Initialize once, not per file, with arguments
+bino = Binoculars(
+    observer_name_or_path=args.observer,
+    performer_name_or_path=args.performer
+)
 
 def clean_text(text):
     text = text.replace('\r\n', '\n').replace('\r', '\n')
