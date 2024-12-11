@@ -11,8 +11,8 @@ import re
 
 # Add argument parsing at the top
 parser = argparse.ArgumentParser()
-parser.add_argument("--observer", default="tiiuae/falcon-7b", help="Observer model name or path")
-parser.add_argument("--performer", default="tiiuae/falcon-7b-instruct", help="Performer model name or path")
+parser.add_argument("--observer", default="tiiuae/falcon-7b-instruct", help="Observer model name or path")
+parser.add_argument("--performer", default="tiiuae/falcon-7b", help="Performer model name or path")
 args = parser.parse_args()
 
 # Initialize once, not per file, with arguments
