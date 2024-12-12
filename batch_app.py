@@ -13,6 +13,7 @@ import math
 import statistics
 
 OPTIMAL_CHAR_LENGTH = 1242  # Approximate optimal length for chunking
+SNIPPET_LENGTH = 50
 
 def clean_text(text):
     text = text.replace('\r\n', '\n').replace('\r', '\n')
@@ -179,6 +180,11 @@ def process_txt_file(file, batch_size, method, random_count, rolling_words, bino
     if df_variants.empty:
         raise gr.Error("No variants generated from the provided text file. The file may be empty.")
 
+    # Store a snippet for each original variant
+    snippet_map = {}
+    for idx, row in df_variants.iterrows():
+        snippet_map[idx] = row['text'][:SNIPPET_LENGTH]
+
     # Apply chunking to each variant
     chunked_rows = []
     for idx, row in df_variants.iterrows():
@@ -197,6 +203,7 @@ def process_txt_file(file, batch_size, method, random_count, rolling_words, bino
         stats = compute_statistics(scores)
         summary_row = {
             "original_index": idx,
+            "text_snippet": snippet_map.get(idx, "")[:SNIPPET_LENGTH],
             "mean_score": stats["mean_score"],
             "median_score": stats["median_score"],
             "std_dev": stats["std_dev"],
@@ -222,10 +229,15 @@ def process_tabular_file(file, batch_size, bino):
     if 'text' not in df_full.columns:
         raise gr.Error("Input file must contain a 'text' column")
 
-    # Apply chunking per row if text is too long
+    # Store a snippet for each original row
+    snippet_map = {}
+    for i, row in df_full.iterrows():
+        snippet_map[i] = (clean_text(row['text'])[:SNIPPET_LENGTH]
+                          if isinstance(row['text'], str) else "")
+
     expanded_rows = []
     for i, row in df_full.iterrows():
-        text = clean_text(row['text'])
+        text = clean_text(str(row['text']))
         chunks = split_text_into_chunks(text, OPTIMAL_CHAR_LENGTH)
         for ch in chunks:
             new_row = row.copy()
@@ -236,13 +248,13 @@ def process_tabular_file(file, batch_size, bino):
     expanded_df = pd.DataFrame(expanded_rows)
     processed_df = run_bino_on_df(expanded_df, batch_size, bino)
 
-    # Aggregate stats by original_id
     summary_rows = []
     for i, group in processed_df.groupby('original_id'):
         scores = group['raw_score'].tolist()
         stats = compute_statistics(scores)
         summary_row = {
             "original_id": i,
+            "text_snippet": snippet_map.get(i, "")[:SNIPPET_LENGTH],
             "mean_score": stats["mean_score"],
             "median_score": stats["median_score"],
             "std_dev": stats["std_dev"],
@@ -312,7 +324,7 @@ def batch_interface(bino):
         """) as demo:
 
         gr.Markdown("## Batch Processing for AI Text Detection with Chunking and Statistics")
-        gr.Markdown("Upload a .txt file to generate variants and chunks, or a CSV/XLSX to process multiple texts. Results include statistical insights.")
+        gr.Markdown("Upload a .txt file or CSV/XLSX. You'll see chunk-level results and a summary per original text. Summary now includes a short text snippet.")
 
         with gr.Row():
             file_input = gr.File(
@@ -328,7 +340,6 @@ def batch_interface(bino):
                 label="Batch Size"
             )
 
-        # Method selection
         with gr.Row():
             method = gr.Radio(
                 choices=["beginning", "end", "random", "rolling"],
@@ -341,7 +352,6 @@ def batch_interface(bino):
             rolling_words = gr.Number(value=400, label="Word count threshold (For 'rolling' method)")
 
         gr.Markdown("### Detailed Results (Chunk-level)")
-        # Removed unused statistical columns from the detail output
         detail_output = gr.Dataframe(
             headers=["text", "prediction", "raw_score"],
             datatype=["str", "str", "number"],
@@ -353,11 +363,11 @@ def batch_interface(bino):
 
         gr.Markdown("### Summary Results (Per Original Text)")
         summary_output = gr.Dataframe(
-            headers=["original_index/original_id", "mean_score", "median_score", "std_dev", "min_score", "max_score", "ci_lower", "ci_upper", "chunk_count"],
-            datatype=["number", "number", "number", "number", "number", "number", "number", "number", "number"],
+            headers=["original_index/original_id", "text_snippet", "mean_score", "median_score", "std_dev", "min_score", "max_score", "ci_lower", "ci_upper", "chunk_count"],
+            datatype=["number", "str", "number", "number", "number", "number", "number", "number", "number", "number"],
             visible=True,
             wrap=True,
-            column_widths=["10%", "10%", "10%", "10%", "10%", "10%", "10%", "10%", "10%"],
+            column_widths=["10%", "20%", "10%", "10%", "10%", "10%", "10%", "10%", "10%", "10%"],
             elem_classes=["fixed-height-row"]
         )
 
