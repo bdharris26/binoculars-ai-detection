@@ -8,18 +8,7 @@ from tqdm import tqdm
 import plotly.express as px
 import random
 import re
-
-# Add argument parsing at the top
-parser = argparse.ArgumentParser()
-parser.add_argument("--observer", default="tiiuae/falcon-7b", help="Observer model name or path")
-parser.add_argument("--performer", default="tiiuae/falcon-7b-instruct", help="Performer model name or path")
-args = parser.parse_args()
-
-# Initialize once, not per file, with arguments
-bino = Binoculars(
-    observer_name_or_path=args.observer,
-    performer_name_or_path=args.performer
-)
+import datetime
 
 def clean_text(text):
     text = text.replace('\r\n', '\n').replace('\r', '\n')
@@ -33,11 +22,10 @@ def clean_text(text):
     return text
 
 def generate_variants_from_text(text, method, random_count=50, rolling_words=400):
-    """
-    Generates a DataFrame with a 'text' column containing various truncated versions
-    of the input text according to the chosen method.
-    """
     cleaned_text = clean_text(text)
+    if not cleaned_text:
+        # If no text, return empty DataFrame
+        return pd.DataFrame({"text": []})
     paragraphs = cleaned_text.split('\n')
 
     # Start DataFrame with the full cleaned text
@@ -52,7 +40,6 @@ def generate_variants_from_text(text, method, random_count=50, rolling_words=400
             truncated_text = "\n".join(paragraphs[:-i])
             variants.append(truncated_text)
     elif method == 'random':
-        # Generate random_count random variants
         total_pars = len(paragraphs)
         for _ in range(random_count):
             if total_pars == 0:
@@ -95,18 +82,24 @@ def create_score_plot(df):
     fig.update_layout(showlegend=False)
     return fig
 
-def run_bino_on_df(df, batch_size):
-    """Given a DataFrame with a 'text' column, run bino prediction in batches."""
+def run_bino_on_df(df, batch_size, bino):
     if 'text' not in df.columns:
         raise gr.Error("Input DataFrame must contain a 'text' column")
 
-    # Simulate the batching approach
+    # If DF is empty, notify user
+    if df.empty:
+        raise gr.Error("No text variants were generated. The input file might be empty or invalid.")
+
     chunks = []
     for i in tqdm(range(0, len(df), batch_size), desc="Processing Batches"):
         chunk = df.iloc[i:i+batch_size].copy()
         text_list = chunk['text'].tolist()
-        predictions = bino.predict(text_list)
-        scores = bino.compute_score(text_list)
+        try:
+            predictions = bino.predict(text_list)
+            scores = bino.compute_score(text_list)
+        except Exception as e:
+            raise gr.Error(f"Error during model inference: {e}")
+
         chunk['prediction'] = predictions
         chunk['raw_score'] = scores
         chunks.append(chunk)
@@ -114,7 +107,7 @@ def run_bino_on_df(df, batch_size):
     df = pd.concat(chunks, ignore_index=True)
     return df
 
-def process_file(file, batch_size, method, random_count, rolling_words):
+def process_file(file, batch_size, method, random_count, rolling_words, bino):
     if file is None:
         return None, None
 
@@ -126,7 +119,10 @@ def process_file(file, batch_size, method, random_count, rolling_words):
             with open(file.name, 'r', encoding='utf-8', errors='replace') as f:
                 original_text = f.read()
             df_variants = generate_variants_from_text(original_text, method, random_count, rolling_words)
-            df = run_bino_on_df(df_variants, batch_size)
+            # Check if DataFrame is empty
+            if df_variants.empty:
+                raise gr.Error("No variants generated from the provided text file. The file may be empty.")
+            df = run_bino_on_df(df_variants, batch_size, bino)
             return df, create_score_plot(df)
         except Exception as e:
             raise gr.Error(f"Error processing text file: {e}")
@@ -139,15 +135,17 @@ def process_file(file, batch_size, method, random_count, rolling_words):
     else:
         raise gr.Error("Unsupported file type. Please upload a TXT, CSV or XLSX file.")
 
-    # Original logic for CSV/XLSX
     chunks = []
     for chunk in tqdm(df_iterator, desc="Processing File"):
         if 'text' not in chunk.columns:
             raise gr.Error("Input file must contain a 'text' column")
         
         text_list = chunk['text'].tolist()
-        predictions = bino.predict(text_list)
-        scores = bino.compute_score(text_list)
+        try:
+            predictions = bino.predict(text_list)
+            scores = bino.compute_score(text_list)
+        except Exception as e:
+            raise gr.Error(f"Error during model inference: {e}")
 
         chunk['prediction'] = predictions
         chunk['raw_score'] = scores
@@ -156,19 +154,21 @@ def process_file(file, batch_size, method, random_count, rolling_words):
     df = pd.concat(chunks, ignore_index=True)
     return df, create_score_plot(df)
 
-
 def save_df(df):
     if df is None:
         return None
+    # Use a unique filename by appending a timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_filename = f"results_{timestamp}.xlsx"
     temp_dir = tempfile.gettempdir()
-    output_path = os.path.join(temp_dir, "results.xlsx")
+    output_path = os.path.join(temp_dir, output_filename)
     try:
         df.to_excel(output_path, index=False)
         return output_path
     except Exception as e:
         raise gr.Error(f"Error saving results: {str(e)}")
 
-def batch_interface():
+def batch_interface(bino):
     with gr.Blocks(css="""
         .wrap-text {
             max-width: 400px;
@@ -235,8 +235,9 @@ def batch_interface():
         with gr.Row():
             download_button = gr.Button("Download Results")
 
+        # Pass bino as part of the parameters to process_file
         file_input.change(
-            fn=process_file,
+            fn=lambda file, bs, m, rc, rw: process_file(file, bs, m, rc, rw, bino),
             inputs=[file_input, batch_size, method, random_count, rolling_words],
             outputs=[output, plot]
         )
@@ -256,7 +257,22 @@ def batch_interface():
     return demo
 
 if __name__ == "__main__":
-    batch_interface().launch(
+    # Move argument parsing and Binoculars initialization into main block
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--observer", default="tiiuae/falcon-7b", help="Observer model name or path")
+    parser.add_argument("--performer", default="tiiuae/falcon-7b-instruct", help="Performer model name or path")
+    args = parser.parse_args()
+
+    # Wrap Binoculars initialization in try/except
+    try:
+        bino = Binoculars(
+            observer_name_or_path=args.observer,
+            performer_name_or_path=args.performer
+        )
+    except Exception as e:
+        raise SystemExit(f"Failed to initialize Binoculars: {e}")
+
+    batch_interface(bino).launch(
         share=True,
         server_name="0.0.0.0",
         server_port=7860
