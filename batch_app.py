@@ -9,6 +9,10 @@ import plotly.express as px
 import random
 import re
 import datetime
+import math
+import statistics
+
+OPTIMAL_CHAR_LENGTH = 1024  # Approximate optimal length for chunking
 
 def clean_text(text):
     text = text.replace('\r\n', '\n').replace('\r', '\n')
@@ -20,6 +24,33 @@ def clean_text(text):
     text = re.sub(r'\n+', '\n', text)
     text = text.strip()
     return text
+
+def split_text_into_chunks(text, max_length=OPTIMAL_CHAR_LENGTH):
+    """
+    Splits text into chunks by line boundaries, aiming for each chunk to be close to but not exceed max_length.
+    """
+    lines = text.split('\n')
+    chunks = []
+    current_chunk = []
+    current_length = 0
+
+    for line in lines:
+        line_length = len(line) + 1  # +1 for the newline
+        if current_length + line_length > max_length and current_chunk:
+            # Close off the current chunk and start a new one
+            chunks.append('\n'.join(current_chunk))
+            current_chunk = [line]
+            current_length = line_length
+        else:
+            current_chunk.append(line)
+            current_length += line_length
+
+    # Add the last chunk if present
+    if current_chunk:
+        chunks.append('\n'.join(current_chunk))
+
+    # If text is shorter than max_length, just return it as a single chunk
+    return chunks if chunks else [text]
 
 def generate_variants_from_text(text, method, random_count=50, rolling_words=400):
     cleaned_text = clean_text(text)
@@ -88,7 +119,7 @@ def run_bino_on_df(df, batch_size, bino):
 
     # If DF is empty, notify user
     if df.empty:
-        raise gr.Error("No text variants were generated. The input file might be empty or invalid.")
+        raise gr.Error("No text variants or chunks were generated. The input might be empty or invalid.")
 
     chunks = []
     for i in tqdm(range(0, len(df), batch_size), desc="Processing Batches"):
@@ -107,52 +138,159 @@ def run_bino_on_df(df, batch_size, bino):
     df = pd.concat(chunks, ignore_index=True)
     return df
 
+def compute_statistics(scores):
+    mean_val = statistics.mean(scores) if scores else 0
+    median_val = statistics.median(scores) if scores else 0
+    stdev_val = statistics.pstdev(scores) if scores else 0
+    min_val = min(scores) if scores else 0
+    max_val = max(scores) if scores else 0
+    n = len(scores)
+    # Compute 95% CI if n > 1
+    ci_lower = ci_upper = mean_val
+    if n > 1:
+        ci_margin = 1.96 * (stdev_val / math.sqrt(n))
+        ci_lower = mean_val - ci_margin
+        ci_upper = mean_val + ci_margin
+
+    return {
+        "mean_score": mean_val,
+        "median_score": median_val,
+        "std_dev": stdev_val,
+        "min_score": min_val,
+        "max_score": max_val,
+        "ci_lower": ci_lower,
+        "ci_upper": ci_upper,
+        "chunk_count": n
+    }
+
+def process_txt_file(file, batch_size, method, random_count, rolling_words, bino):
+    with open(file.name, 'r', encoding='utf-8', errors='replace') as f:
+        original_text = f.read()
+    df_variants = generate_variants_from_text(original_text, method, random_count, rolling_words)
+    if df_variants.empty:
+        raise gr.Error("No variants generated from the provided text file. The file may be empty.")
+
+    # Apply chunking to each variant
+    chunked_rows = []
+    for idx, row in df_variants.iterrows():
+        text = row['text']
+        chunks = split_text_into_chunks(text, OPTIMAL_CHAR_LENGTH)
+        for ch in chunks:
+            chunked_rows.append({"original_index": idx, "text": ch})
+
+    chunked_df = pd.DataFrame(chunked_rows)
+    df = run_bino_on_df(chunked_df, batch_size, bino)
+
+    # Aggregate stats per original variant
+    aggregated_rows = []
+    for idx, group in df.groupby("original_index"):
+        scores = group['raw_score'].tolist()
+        stats = compute_statistics(scores)
+        # Create a summary row
+        summary_row = {
+            "original_index": idx,
+            "text": f"**AGGREGATED RESULTS for variant {idx}**",
+            "prediction": "N/A",
+            "raw_score": "N/A",
+            "mean_score": stats["mean_score"],
+            "median_score": stats["median_score"],
+            "std_dev": stats["std_dev"],
+            "min_score": stats["min_score"],
+            "max_score": stats["max_score"],
+            "ci_lower": stats["ci_lower"],
+            "ci_upper": stats["ci_upper"],
+            "chunk_count": stats["chunk_count"]
+        }
+        aggregated_rows.append(summary_row)
+
+    agg_df = pd.DataFrame(aggregated_rows)
+    # Merge detail rows and aggregated rows
+    final_df = pd.concat([df, agg_df], ignore_index=True)
+    return final_df
+
+def process_xlsx_file(file, batch_size, bino):
+    df_full = pd.read_excel(file.name)
+    if 'text' not in df_full.columns:
+        raise gr.Error("Input XLSX must contain a 'text' column")
+
+    # Apply chunking per row if text is too long
+    expanded_rows = []
+    for i, row in df_full.iterrows():
+        text = clean_text(row['text'])
+        chunks = split_text_into_chunks(text, OPTIMAL_CHAR_LENGTH)
+        for ch in chunks:
+            new_row = row.copy()
+            new_row['text'] = ch
+            new_row['original_id'] = i
+            expanded_rows.append(new_row)
+
+    expanded_df = pd.DataFrame(expanded_rows)
+    processed_df = run_bino_on_df(expanded_df, batch_size, bino)
+
+    # Aggregate stats by original_id
+    aggregated_stats = []
+    for i, group in processed_df.groupby('original_id'):
+        scores = group['raw_score'].tolist()
+        stats = compute_statistics(scores)
+        for col, val in stats.items():
+            df_full.loc[i, col] = val
+
+    # Return the processed_df (detailed chunks) and stats added to df_full
+    # The user can choose which DataFrame to output. 
+    # Here, we return the chunk-level detail (processed_df) 
+    # and the user can download aggregated df_full if desired.
+    # For simplicity, we merge them by adding columns to processed_df.
+    # This will duplicate stats per chunk entry. 
+    # If a single-row summary is preferred, that can be returned separately.
+    merged_df = pd.merge(processed_df, df_full[["mean_score","median_score","std_dev",
+                                                "min_score","max_score","ci_lower","ci_upper","chunk_count"]],
+                         left_on="original_id", right_index=True, how="left")
+    return merged_df
+
 def process_file(file, batch_size, method, random_count, rolling_words, bino):
     if file is None:
         return None, None
 
     file_ext = os.path.splitext(file.name)[1].lower()
 
-    # If it's a text file, we generate variants first, then run bino
     if file_ext == '.txt':
         try:
-            with open(file.name, 'r', encoding='utf-8', errors='replace') as f:
-                original_text = f.read()
-            df_variants = generate_variants_from_text(original_text, method, random_count, rolling_words)
-            # Check if DataFrame is empty
-            if df_variants.empty:
-                raise gr.Error("No variants generated from the provided text file. The file may be empty.")
-            df = run_bino_on_df(df_variants, batch_size, bino)
+            df = process_txt_file(file, batch_size, method, random_count, rolling_words, bino)
             return df, create_score_plot(df)
         except Exception as e:
             raise gr.Error(f"Error processing text file: {e}")
-    # Otherwise, use original CSV/XLSX logic
+
     elif file_ext == '.csv':
+        # Original logic, without variants but with chunking (if desired)
         df_iterator = pd.read_csv(file.name, chunksize=batch_size)
+        chunks = []
+        for chunk in tqdm(df_iterator, desc="Processing File"):
+            if 'text' not in chunk.columns:
+                raise gr.Error("Input CSV must contain a 'text' column")
+            # If chunking for CSV is needed, it can be done similarly:
+            # For simplicity, we assume CSV texts are short enough.
+            text_list = chunk['text'].tolist()
+            try:
+                predictions = bino.predict(text_list)
+                scores = bino.compute_score(text_list)
+            except Exception as e:
+                raise gr.Error(f"Error during model inference: {e}")
+
+            chunk['prediction'] = predictions
+            chunk['raw_score'] = scores
+            chunks.append(chunk)
+
+        df = pd.concat(chunks, ignore_index=True)
+        return df, create_score_plot(df)
+
     elif file_ext == '.xlsx':
-        df_full = pd.read_excel(file.name)
-        df_iterator = (df_full[i:i+batch_size] for i in range(0, len(df_full), batch_size))
+        try:
+            df = process_xlsx_file(file, batch_size, bino)
+            return df, create_score_plot(df)
+        except Exception as e:
+            raise gr.Error(f"Error processing XLSX file: {e}")
     else:
         raise gr.Error("Unsupported file type. Please upload a TXT, CSV or XLSX file.")
-
-    chunks = []
-    for chunk in tqdm(df_iterator, desc="Processing File"):
-        if 'text' not in chunk.columns:
-            raise gr.Error("Input file must contain a 'text' column")
-        
-        text_list = chunk['text'].tolist()
-        try:
-            predictions = bino.predict(text_list)
-            scores = bino.compute_score(text_list)
-        except Exception as e:
-            raise gr.Error(f"Error during model inference: {e}")
-
-        chunk['prediction'] = predictions
-        chunk['raw_score'] = scores
-        chunks.append(chunk)
-
-    df = pd.concat(chunks, ignore_index=True)
-    return df, create_score_plot(df)
 
 def save_df(df):
     if df is None:
@@ -190,9 +328,9 @@ def batch_interface(bino):
         }
         """) as demo:
 
-        gr.Markdown("## Batch Processing for AI Text Detection")
-        gr.Markdown("You can upload a .txt file to generate variants or a CSV/XLSX with a 'text' column directly.")
-        
+        gr.Markdown("## Batch Processing for AI Text Detection with Chunking and Statistics")
+        gr.Markdown("Upload a .txt file to generate variants and chunks, or a CSV/XLSX to process multiple texts. Results will include statistical insights for long texts.")
+
         with gr.Row():
             file_input = gr.File(
                 label="Upload TXT, CSV, or XLSX",
@@ -212,7 +350,7 @@ def batch_interface(bino):
             method = gr.Radio(
                 choices=["beginning", "end", "random", "rolling"],
                 value="beginning",
-                label="Text Generation Method (For TXT Files)"
+                label="Variant Generation Method (For TXT Files)"
             )
 
         with gr.Row():
@@ -221,11 +359,11 @@ def batch_interface(bino):
 
         with gr.Row():
             output = gr.Dataframe(
-                headers=["text", "prediction", "raw_score"],
-                datatype=["str", "str", "number"],
+                headers=["text", "prediction", "raw_score", "mean_score", "median_score", "std_dev", "min_score", "max_score", "ci_lower", "ci_upper", "chunk_count"],
+                datatype=["str", "str", "str", "number", "number", "number", "number", "number", "number", "number", "number"],
                 visible=True,
                 wrap=True,
-                column_widths=["65%", "20%", "15%"],
+                column_widths=["30%", "10%", "10%", "5%", "5%", "5%", "5%", "5%", "5%", "5%", "5%"],
                 elem_classes=["fixed-height-row"]
             )
 
@@ -235,7 +373,6 @@ def batch_interface(bino):
         with gr.Row():
             download_button = gr.Button("Download Results")
 
-        # Pass bino as part of the parameters to process_file
         file_input.change(
             fn=lambda file, bs, m, rc, rw: process_file(file, bs, m, rc, rw, bino),
             inputs=[file_input, batch_size, method, random_count, rolling_words],
@@ -247,23 +384,21 @@ def batch_interface(bino):
             inputs=[output],
             outputs=[plot]
         )
-        
+
         download_button.click(
             fn=save_df,
             inputs=output,
             outputs=gr.File(label="Download Results", file_types=[".xlsx"])
         )
-    
+
     return demo
 
 if __name__ == "__main__":
-    # Move argument parsing and Binoculars initialization into main block
     parser = argparse.ArgumentParser()
     parser.add_argument("--observer", default="tiiuae/falcon-7b", help="Observer model name or path")
     parser.add_argument("--performer", default="tiiuae/falcon-7b-instruct", help="Performer model name or path")
     args = parser.parse_args()
 
-    # Wrap Binoculars initialization in try/except
     try:
         bino = Binoculars(
             observer_name_or_path=args.observer,
