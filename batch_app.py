@@ -12,7 +12,7 @@ import datetime
 import math
 import statistics
 
-OPTIMAL_CHAR_LENGTH = 1024  # Approximate optimal length for chunking
+OPTIMAL_CHAR_LENGTH = 1242  # Approximate optimal length for chunking
 
 def clean_text(text):
     text = text.replace('\r\n', '\n').replace('\r', '\n')
