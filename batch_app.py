@@ -49,7 +49,6 @@ def split_text_into_chunks(text, max_length=OPTIMAL_CHAR_LENGTH):
     if current_chunk:
         chunks.append('\n'.join(current_chunk))
 
-    # If text is shorter than max_length, just return it as a single chunk
     return chunks if chunks else [text]
 
 def generate_variants_from_text(text, method, random_count=50, rolling_words=400):
@@ -103,6 +102,8 @@ def generate_variants_from_text(text, method, random_count=50, rolling_words=400
 def create_score_plot(df):
     if df is None or len(df) == 0:
         return None
+    if 'raw_score' not in df.columns:
+        return None
     fig = px.histogram(
         df, 
         x="raw_score",
@@ -141,7 +142,7 @@ def run_bino_on_df(df, batch_size, bino):
 def compute_statistics(scores):
     mean_val = statistics.mean(scores) if scores else 0
     median_val = statistics.median(scores) if scores else 0
-    stdev_val = statistics.pstdev(scores) if scores else 0
+    stdev_val = statistics.pstdev(scores) if len(scores) > 1 else 0
     min_val = min(scores) if scores else 0
     max_val = max(scores) if scores else 0
     n = len(scores)
@@ -182,16 +183,12 @@ def process_txt_file(file, batch_size, method, random_count, rolling_words, bino
     df = run_bino_on_df(chunked_df, batch_size, bino)
 
     # Aggregate stats per original variant
-    aggregated_rows = []
+    summary_rows = []
     for idx, group in df.groupby("original_index"):
         scores = group['raw_score'].tolist()
         stats = compute_statistics(scores)
-        # Create a summary row
         summary_row = {
             "original_index": idx,
-            "text": f"**AGGREGATED RESULTS for variant {idx}**",
-            "prediction": "N/A",
-            "raw_score": "N/A",
             "mean_score": stats["mean_score"],
             "median_score": stats["median_score"],
             "std_dev": stats["std_dev"],
@@ -201,17 +198,21 @@ def process_txt_file(file, batch_size, method, random_count, rolling_words, bino
             "ci_upper": stats["ci_upper"],
             "chunk_count": stats["chunk_count"]
         }
-        aggregated_rows.append(summary_row)
+        summary_rows.append(summary_row)
 
-    agg_df = pd.DataFrame(aggregated_rows)
-    # Merge detail rows and aggregated rows
-    final_df = pd.concat([df, agg_df], ignore_index=True)
-    return final_df
+    summary_df = pd.DataFrame(summary_rows)
+    return df, summary_df
 
-def process_xlsx_file(file, batch_size, bino):
-    df_full = pd.read_excel(file.name)
+def process_tabular_file(file, batch_size, bino):
+    # Works for both XLSX and CSV by reading into a single dataframe
+    file_ext = os.path.splitext(file.name)[1].lower()
+    if file_ext == '.csv':
+        df_full = pd.read_csv(file.name)
+    else:
+        df_full = pd.read_excel(file.name)
+
     if 'text' not in df_full.columns:
-        raise gr.Error("Input XLSX must contain a 'text' column")
+        raise gr.Error("Input file must contain a 'text' column")
 
     # Apply chunking per row if text is too long
     expanded_rows = []
@@ -228,74 +229,54 @@ def process_xlsx_file(file, batch_size, bino):
     processed_df = run_bino_on_df(expanded_df, batch_size, bino)
 
     # Aggregate stats by original_id
-    aggregated_stats = []
+    summary_rows = []
     for i, group in processed_df.groupby('original_id'):
         scores = group['raw_score'].tolist()
         stats = compute_statistics(scores)
-        for col, val in stats.items():
-            df_full.loc[i, col] = val
+        summary_row = {
+            "original_id": i,
+            "mean_score": stats["mean_score"],
+            "median_score": stats["median_score"],
+            "std_dev": stats["std_dev"],
+            "min_score": stats["min_score"],
+            "max_score": stats["max_score"],
+            "ci_lower": stats["ci_lower"],
+            "ci_upper": stats["ci_upper"],
+            "chunk_count": stats["chunk_count"]
+        }
+        summary_rows.append(summary_row)
 
-    # Return the processed_df (detailed chunks) and stats added to df_full
-    # The user can choose which DataFrame to output. 
-    # Here, we return the chunk-level detail (processed_df) 
-    # and the user can download aggregated df_full if desired.
-    # For simplicity, we merge them by adding columns to processed_df.
-    # This will duplicate stats per chunk entry. 
-    # If a single-row summary is preferred, that can be returned separately.
-    merged_df = pd.merge(processed_df, df_full[["mean_score","median_score","std_dev",
-                                                "min_score","max_score","ci_lower","ci_upper","chunk_count"]],
-                         left_on="original_id", right_index=True, how="left")
-    return merged_df
+    summary_df = pd.DataFrame(summary_rows)
+    return processed_df, summary_df
 
 def process_file(file, batch_size, method, random_count, rolling_words, bino):
     if file is None:
-        return None, None
+        return None, None, None
 
     file_ext = os.path.splitext(file.name)[1].lower()
 
     if file_ext == '.txt':
         try:
-            df = process_txt_file(file, batch_size, method, random_count, rolling_words, bino)
-            return df, create_score_plot(df)
+            detail_df, summary_df = process_txt_file(file, batch_size, method, random_count, rolling_words, bino)
+            plot = create_score_plot(detail_df)
+            return detail_df, plot, summary_df
         except Exception as e:
             raise gr.Error(f"Error processing text file: {e}")
 
-    elif file_ext == '.csv':
-        # Original logic, without variants but with chunking (if desired)
-        df_iterator = pd.read_csv(file.name, chunksize=batch_size)
-        chunks = []
-        for chunk in tqdm(df_iterator, desc="Processing File"):
-            if 'text' not in chunk.columns:
-                raise gr.Error("Input CSV must contain a 'text' column")
-            # If chunking for CSV is needed, it can be done similarly:
-            # For simplicity, we assume CSV texts are short enough.
-            text_list = chunk['text'].tolist()
-            try:
-                predictions = bino.predict(text_list)
-                scores = bino.compute_score(text_list)
-            except Exception as e:
-                raise gr.Error(f"Error during model inference: {e}")
-
-            chunk['prediction'] = predictions
-            chunk['raw_score'] = scores
-            chunks.append(chunk)
-
-        df = pd.concat(chunks, ignore_index=True)
-        return df, create_score_plot(df)
-
-    elif file_ext == '.xlsx':
+    elif file_ext in ['.csv', '.xlsx']:
         try:
-            df = process_xlsx_file(file, batch_size, bino)
-            return df, create_score_plot(df)
+            detail_df, summary_df = process_tabular_file(file, batch_size, bino)
+            plot = create_score_plot(detail_df)
+            return detail_df, plot, summary_df
         except Exception as e:
-            raise gr.Error(f"Error processing XLSX file: {e}")
+            raise gr.Error(f"Error processing file: {e}")
+
     else:
         raise gr.Error("Unsupported file type. Please upload a TXT, CSV or XLSX file.")
 
 def save_df(df):
-    if df is None:
+    if df is None or df.empty:
         return None
-    # Use a unique filename by appending a timestamp
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filename = f"results_{timestamp}.xlsx"
     temp_dir = tempfile.gettempdir()
@@ -329,7 +310,7 @@ def batch_interface(bino):
         """) as demo:
 
         gr.Markdown("## Batch Processing for AI Text Detection with Chunking and Statistics")
-        gr.Markdown("Upload a .txt file to generate variants and chunks, or a CSV/XLSX to process multiple texts. Results will include statistical insights for long texts.")
+        gr.Markdown("Upload a .txt file to generate variants and chunks, or a CSV/XLSX to process multiple texts. Results will include statistical insights. Two tables are shown: one for detailed chunk-level results and another for aggregated summaries.")
 
         with gr.Row():
             file_input = gr.File(
@@ -357,38 +338,55 @@ def batch_interface(bino):
             random_count = gr.Number(value=50, label="Number of random rows (For 'random' method)")
             rolling_words = gr.Number(value=400, label="Word count threshold (For 'rolling' method)")
 
-        with gr.Row():
-            output = gr.Dataframe(
-                headers=["text", "prediction", "raw_score", "mean_score", "median_score", "std_dev", "min_score", "max_score", "ci_lower", "ci_upper", "chunk_count"],
-                datatype=["str", "str", "str", "number", "number", "number", "number", "number", "number", "number", "number"],
-                visible=True,
-                wrap=True,
-                column_widths=["30%", "10%", "10%", "5%", "5%", "5%", "5%", "5%", "5%", "5%", "5%"],
-                elem_classes=["fixed-height-row"]
-            )
+        gr.Markdown("### Detailed Results (Chunk-level)")
+        detail_output = gr.Dataframe(
+            headers=["text", "prediction", "raw_score", "mean_score", "median_score", "std_dev", "min_score", "max_score", "ci_lower", "ci_upper", "chunk_count"],
+            datatype=["str", "str", "number", "number", "number", "number", "number", "number", "number", "number", "number"],
+            visible=True,
+            wrap=True,
+            column_widths=["30%", "10%", "10%", "5%", "5%", "5%", "5%", "5%", "5%", "5%", "5%"],
+            elem_classes=["fixed-height-row"]
+        )
+
+        gr.Markdown("### Summary Results (Per Original Text)")
+        summary_output = gr.Dataframe(
+            headers=["original_index/original_id", "mean_score", "median_score", "std_dev", "min_score", "max_score", "ci_lower", "ci_upper", "chunk_count"],
+            datatype=["number", "number", "number", "number", "number", "number", "number", "number", "number"],
+            visible=True,
+            wrap=True,
+            column_widths=["10%", "10%", "10%", "10%", "10%", "10%", "10%", "10%", "10%"],
+            elem_classes=["fixed-height-row"]
+        )
 
         with gr.Row():
             plot = gr.Plot(label="Score Distribution")
 
         with gr.Row():
-            download_button = gr.Button("Download Results")
+            download_button = gr.Button("Download Detailed Results")
+            download_summary_button = gr.Button("Download Summary Results")
 
         file_input.change(
             fn=lambda file, bs, m, rc, rw: process_file(file, bs, m, rc, rw, bino),
             inputs=[file_input, batch_size, method, random_count, rolling_words],
-            outputs=[output, plot]
+            outputs=[detail_output, plot, summary_output]
         )
 
-        output.change(
+        detail_output.change(
             fn=create_score_plot,
-            inputs=[output],
+            inputs=[detail_output],
             outputs=[plot]
         )
 
         download_button.click(
             fn=save_df,
-            inputs=output,
-            outputs=gr.File(label="Download Results", file_types=[".xlsx"])
+            inputs=detail_output,
+            outputs=gr.File(label="Download Detailed Results", file_types=[".xlsx"])
+        )
+
+        download_summary_button.click(
+            fn=save_df,
+            inputs=summary_output,
+            outputs=gr.File(label="Download Summary Results", file_types=[".xlsx"])
         )
 
     return demo
