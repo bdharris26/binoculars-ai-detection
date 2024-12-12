@@ -93,19 +93,28 @@ def generate_variants_from_text(text, method, random_count=50, rolling_words=400
                     truncated_text = "\n".join(chunk)
                     variants.append(truncated_text)
                     break
-            else:
-                # Can't reach threshold anymore
-                break
 
     return pd.DataFrame({"text": variants})
 
-def create_score_plot(df):
-    if df is None or len(df) == 0:
+def create_score_plot(data):
+    # Ensure data is a DataFrame
+    if data is None or len(data) == 0:
         return None
-    if 'raw_score' not in df.columns:
+    
+    if not isinstance(data, pd.DataFrame):
+        # Attempt to convert if it's not a DataFrame (e.g., if data is a list of lists)
+        try:
+            data = pd.DataFrame(data, columns=["text", "prediction", "raw_score"])
+        except:
+            # If conversion fails, return None gracefully
+            return None
+
+    # Check if 'raw_score' column exists
+    if 'raw_score' not in data.columns:
         return None
+
     fig = px.histogram(
-        df, 
+        data, 
         x="raw_score",
         title="Distribution of AI Detection Scores",
         labels={"raw_score": "AI Detection Score"},
@@ -118,7 +127,6 @@ def run_bino_on_df(df, batch_size, bino):
     if 'text' not in df.columns:
         raise gr.Error("Input DataFrame must contain a 'text' column")
 
-    # If DF is empty, notify user
     if df.empty:
         raise gr.Error("No text variants or chunks were generated. The input might be empty or invalid.")
 
@@ -256,26 +264,20 @@ def process_file(file, batch_size, method, random_count, rolling_words, bino):
     file_ext = os.path.splitext(file.name)[1].lower()
 
     if file_ext == '.txt':
-        try:
-            detail_df, summary_df = process_txt_file(file, batch_size, method, random_count, rolling_words, bino)
-            plot = create_score_plot(detail_df)
-            return detail_df, plot, summary_df
-        except Exception as e:
-            raise gr.Error(f"Error processing text file: {e}")
+        detail_df, summary_df = process_txt_file(file, batch_size, method, random_count, rolling_words, bino)
+        plot = create_score_plot(detail_df)
+        return detail_df, plot, summary_df
 
     elif file_ext in ['.csv', '.xlsx']:
-        try:
-            detail_df, summary_df = process_tabular_file(file, batch_size, bino)
-            plot = create_score_plot(detail_df)
-            return detail_df, plot, summary_df
-        except Exception as e:
-            raise gr.Error(f"Error processing file: {e}")
+        detail_df, summary_df = process_tabular_file(file, batch_size, bino)
+        plot = create_score_plot(detail_df)
+        return detail_df, plot, summary_df
 
     else:
         raise gr.Error("Unsupported file type. Please upload a TXT, CSV or XLSX file.")
 
 def save_df(df):
-    if df is None or df.empty:
+    if df is None or len(df) == 0:
         return None
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     output_filename = f"results_{timestamp}.xlsx"
@@ -310,7 +312,7 @@ def batch_interface(bino):
         """) as demo:
 
         gr.Markdown("## Batch Processing for AI Text Detection with Chunking and Statistics")
-        gr.Markdown("Upload a .txt file to generate variants and chunks, or a CSV/XLSX to process multiple texts. Results will include statistical insights. Two tables are shown: one for detailed chunk-level results and another for aggregated summaries.")
+        gr.Markdown("Upload a .txt file to generate variants and chunks, or a CSV/XLSX to process multiple texts. Results include statistical insights.")
 
         with gr.Row():
             file_input = gr.File(
@@ -339,12 +341,13 @@ def batch_interface(bino):
             rolling_words = gr.Number(value=400, label="Word count threshold (For 'rolling' method)")
 
         gr.Markdown("### Detailed Results (Chunk-level)")
+        # Removed unused statistical columns from the detail output
         detail_output = gr.Dataframe(
-            headers=["text", "prediction", "raw_score", "mean_score", "median_score", "std_dev", "min_score", "max_score", "ci_lower", "ci_upper", "chunk_count"],
-            datatype=["str", "str", "number", "number", "number", "number", "number", "number", "number", "number", "number"],
+            headers=["text", "prediction", "raw_score"],
+            datatype=["str", "str", "number"],
             visible=True,
             wrap=True,
-            column_widths=["30%", "10%", "10%", "5%", "5%", "5%", "5%", "5%", "5%", "5%", "5%"],
+            column_widths=["70%", "15%", "15%"],
             elem_classes=["fixed-height-row"]
         )
 
