@@ -28,29 +28,42 @@ def clean_text(text):
 
 def split_text_into_chunks(text, max_length=OPTIMAL_CHAR_LENGTH):
     """
-    Splits text into chunks by line boundaries, aiming for each chunk to be close to but not exceed max_length.
+    1) Splits text (by lines) into "half-chunks" each up to max_length/2 characters.
+    2) Combines each adjacent pair of half-chunks to create final overlapping chunks (~max_length in size with 50% overlap).
     """
+    # 1) Split text by lines
     lines = text.split('\n')
-    chunks = []
-    current_chunk = []
-    current_length = 0
 
+    half_size = max_length // 2
+    half_chunks = []
+    
+    # Build half-chunks
+    current_chunk_lines = []
+    current_length = 0
     for line in lines:
-        line_length = len(line) + 1  # +1 for the newline
-        if current_length + line_length > max_length and current_chunk:
-            # Close off the current chunk and start a new one
-            chunks.append('\n'.join(current_chunk))
-            current_chunk = [line]
+        line_length = len(line) + 1  # +1 for newline
+        if current_length + line_length > half_size and current_chunk_lines:
+            # Close off the current half-chunk
+            half_chunks.append('\n'.join(current_chunk_lines))
+            current_chunk_lines = [line]
             current_length = line_length
         else:
-            current_chunk.append(line)
+            current_chunk_lines.append(line)
             current_length += line_length
+    # Add the last half-chunk if present
+    if current_chunk_lines:
+        half_chunks.append('\n'.join(current_chunk_lines))
 
-    # Add the last chunk if present
-    if current_chunk:
-        chunks.append('\n'.join(current_chunk))
-
-    return chunks if chunks else [text]
+    # 2) Combine pairs of half-chunks to produce the final overlapping chunks
+    final_chunks = []
+    for i in range(len(half_chunks) - 1):
+        combined_chunk = half_chunks[i] + '\n' + half_chunks[i + 1]
+        final_chunks.append(combined_chunk)
+    
+    # Add the very last half-chunk
+    final_chunks.append(half_chunks[-1])
+    
+    return final_chunks if final_chunks else [text]
 
 def generate_variants_from_text(text, method, random_count=50, rolling_words=400):
     cleaned_text = clean_text(text)
