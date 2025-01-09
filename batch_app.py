@@ -59,6 +59,8 @@ def split_text_into_chunks(text, max_length=1242):
 
     # Use a sliding window to combine each half-chunk with the next one
     final_chunks = []
+    # Start with the first half-chunk alone
+    final_chunks.append(half_chunks[0])
     for i in range(len(half_chunks)):
         combined_chunk = half_chunks[i]
         if i + 1 < len(half_chunks):
