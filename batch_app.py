@@ -11,9 +11,13 @@ import re
 import datetime
 import math
 import statistics
+import transformers.logging
 
 OPTIMAL_CHAR_LENGTH = 1242  # Approximate optimal length for chunking
 SNIPPET_LENGTH = 50
+
+transformers.logging.set_verbosity_error()
+transformers.logging.disable_progress_bar()
 
 def clean_text(text):
     text = text.replace('\r\n', '\n').replace('\r', '\n')
