@@ -43,7 +43,7 @@ class Binoculars(object):
                  use_bfloat16: bool = True,
                  max_token_observed: int = 512,
                  mode: str = "low-fpr",
-                 ) -> None:
+                 cache_dir: str = None) -> None:
         """
         Initializes the Binoculars class with the given parameters.
 
@@ -53,24 +53,13 @@ class Binoculars(object):
             use_bfloat16 (bool): Whether to use bfloat16 precision.
             max_token_observed (int): The maximum number of tokens to observe.
             mode (str): The mode to use for detection ("low-fpr" or "accuracy").
+            cache_dir (str): The directory to cache models in Google Drive.
         """
         assert_tokenizer_consistency(observer_name_or_path, performer_name_or_path)
 
         self.change_mode(mode)
-        self.observer_model = AutoModelForCausalLM.from_pretrained(observer_name_or_path,
-                                                                   device_map={"": DEVICE_1},
-                                                                   trust_remote_code=True,
-                                                                   torch_dtype=torch.bfloat16 if use_bfloat16
-                                                                   else torch.float32,
-                                                                   token=huggingface_config["TOKEN"]
-                                                                   )
-        self.performer_model = AutoModelForCausalLM.from_pretrained(performer_name_or_path,
-                                                                    device_map={"": DEVICE_2},
-                                                                    trust_remote_code=True,
-                                                                    torch_dtype=torch.bfloat16 if use_bfloat16
-                                                                    else torch.float32,
-                                                                    token=huggingface_config["TOKEN"]
-                                                                    )
+        self.observer_model = self.load_or_download_model(observer_name_or_path, cache_dir, use_bfloat16, DEVICE_1)
+        self.performer_model = self.load_or_download_model(performer_name_or_path, cache_dir, use_bfloat16, DEVICE_2)
         self.observer_model.eval()
         self.performer_model.eval()
 
@@ -166,3 +155,36 @@ class Binoculars(object):
                         "Most likely human-generated"
                         ).tolist()
         return pred
+
+    def load_or_download_model(self, model_name_or_path, cache_dir, use_bfloat16, device):
+        """
+        Loads a model from cache or downloads it if not present.
+
+        Args:
+            model_name_or_path (str): The name or path of the model.
+            cache_dir (str): The directory to cache models in Google Drive.
+            use_bfloat16 (bool): Whether to use bfloat16 precision.
+            device (str): The device to load the model on.
+
+        Returns:
+            AutoModelForCausalLM: The loaded model.
+        """
+        model_path = os.path.join(cache_dir, model_name_or_path.replace('/', '_'))
+        if not os.path.exists(model_path):
+            model = AutoModelForCausalLM.from_pretrained(model_name_or_path,
+                                                         device_map={"": device},
+                                                         trust_remote_code=True,
+                                                         torch_dtype=torch.bfloat16 if use_bfloat16
+                                                         else torch.float32,
+                                                         token=huggingface_config["TOKEN"]
+                                                         )
+            model.save_pretrained(model_path)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(model_path,
+                                                         device_map={"": device},
+                                                         trust_remote_code=True,
+                                                         torch_dtype=torch.bfloat16 if use_bfloat16
+                                                         else torch.float32,
+                                                         token=huggingface_config["TOKEN"]
+                                                         )
+        return model
