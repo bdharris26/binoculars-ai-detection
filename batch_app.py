@@ -9,6 +9,7 @@ import plotly.express as px
 import random
 import re
 import datetime
+from google.colab import drive
 
 def clean_text(text):
     text = text.replace('\r\n', '\n').replace('\r', '\n')
@@ -256,18 +257,33 @@ def batch_interface(bino):
     
     return demo
 
+def load_or_download_model(model_name_or_path, cache_dir):
+    model_path = os.path.join(cache_dir, model_name_or_path.replace('/', '_'))
+    if not os.path.exists(model_path):
+        model = AutoModelForCausalLM.from_pretrained(model_name_or_path)
+        model.save_pretrained(model_path)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(model_path)
+    return model
+
 if __name__ == "__main__":
     # Move argument parsing and Binoculars initialization into main block
     parser = argparse.ArgumentParser()
     parser.add_argument("--observer", default="tiiuae/falcon-7b", help="Observer model name or path")
     parser.add_argument("--performer", default="tiiuae/falcon-7b-instruct", help="Performer model name or path")
+    parser.add_argument("--cache_dir", default="/content/drive/MyDrive/model_cache", help="Google Drive cache directory")
     args = parser.parse_args()
+
+    # Mount Google Drive
+    drive.mount('/content/drive')
 
     # Wrap Binoculars initialization in try/except
     try:
+        observer_model = load_or_download_model(args.observer, args.cache_dir)
+        performer_model = load_or_download_model(args.performer, args.cache_dir)
         bino = Binoculars(
-            observer_name_or_path=args.observer,
-            performer_name_or_path=args.performer
+            observer_model=observer_model,
+            performer_model=performer_model
         )
     except Exception as e:
         raise SystemExit(f"Failed to initialize Binoculars: {e}")
