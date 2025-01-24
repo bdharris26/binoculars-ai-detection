@@ -43,6 +43,7 @@ class Binoculars(object):
                  use_bfloat16: bool = True,
                  max_token_observed: int = 512,
                  mode: str = "low-fpr",
+                 cache_dir: str = None,
                  ) -> None:
         """
         Initializes the Binoculars class with the given parameters.
@@ -53,6 +54,7 @@ class Binoculars(object):
             use_bfloat16 (bool): Whether to use bfloat16 precision.
             max_token_observed (int): The maximum number of tokens to observe.
             mode (str): The mode to use for detection ("low-fpr" or "accuracy").
+            cache_dir (str): The directory to cache models in Google Drive.
         """
         assert_tokenizer_consistency(observer_name_or_path, performer_name_or_path)
 
@@ -62,19 +64,21 @@ class Binoculars(object):
                                                                    trust_remote_code=True,
                                                                    torch_dtype=torch.bfloat16 if use_bfloat16
                                                                    else torch.float32,
-                                                                   token=huggingface_config["TOKEN"]
+                                                                   token=huggingface_config["TOKEN"],
+                                                                   cache_dir=cache_dir
                                                                    )
         self.performer_model = AutoModelForCausalLM.from_pretrained(performer_name_or_path,
                                                                     device_map={"": DEVICE_2},
                                                                     trust_remote_code=True,
                                                                     torch_dtype=torch.bfloat16 if use_bfloat16
                                                                     else torch.float32,
-                                                                    token=huggingface_config["TOKEN"]
+                                                                    token=huggingface_config["TOKEN"],
+                                                                    cache_dir=cache_dir
                                                                     )
         self.observer_model.eval()
         self.performer_model.eval()
 
-        self.tokenizer = AutoTokenizer.from_pretrained(observer_name_or_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(observer_name_or_path, cache_dir=cache_dir)
         if not self.tokenizer.pad_token:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.max_token_observed = max_token_observed
