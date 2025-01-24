@@ -11,7 +11,7 @@ import re
 import datetime
 import math
 import statistics
-import transformers.logging
+import transformers.utils.logging
 
 OPTIMAL_CHAR_LENGTH = 1242  # Approximate optimal length for chunking
 SNIPPET_LENGTH = 50
