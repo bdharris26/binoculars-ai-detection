@@ -171,7 +171,15 @@ def run_bino_on_df(df, batch_size, bino):
     return df
 
 def compute_statistics(scores):
-    if not scores:
+    valid_scores = []
+    for s in scores:
+        try:
+            valid_scores.append(float(s))
+        except (TypeError, ValueError):
+            # Skip invalid score values
+            continue
+
+    if not valid_scores:
         return {
             "mean_score": 0,
             "median_score": 0,
@@ -183,15 +191,12 @@ def compute_statistics(scores):
             "chunk_count": 0
         }
 
-    # Ensure all scores are native Python floats.
-    scores = [float(s) for s in scores]
-
-    mean_val = statistics.mean(scores)
-    median_val = statistics.median(scores)
-    stdev_val = math.sqrt(statistics.pvariance(scores)) if len(scores) > 1 else 0
-    min_val = min(scores)
-    max_val = max(scores)
-    n = len(scores)
+    mean_val = statistics.mean(valid_scores)
+    median_val = statistics.median(valid_scores)
+    stdev_val = statistics.pstdev(valid_scores) if len(valid_scores) > 1 else 0
+    min_val = min(valid_scores)
+    max_val = max(valid_scores)
+    n = len(valid_scores)
     ci_lower = ci_upper = mean_val
     if n > 1:
         ci_margin = 1.96 * (stdev_val / math.sqrt(n))
