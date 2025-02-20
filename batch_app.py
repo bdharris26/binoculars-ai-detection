@@ -188,7 +188,7 @@ def compute_statistics(scores):
 
     mean_val = statistics.mean(scores)
     median_val = statistics.median(scores)
-    stdev_val = statistics.pstdev(scores) if len(scores) > 1 else 0
+    stdev_val = math.sqrt(statistics.pvariance(scores)) if len(scores) > 1 else 0
     min_val = min(scores)
     max_val = max(scores)
     n = len(scores)
