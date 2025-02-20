@@ -171,13 +171,27 @@ def run_bino_on_df(df, batch_size, bino):
     return df
 
 def compute_statistics(scores):
-    mean_val = statistics.mean(scores) if scores else 0
-    median_val = statistics.median(scores) if scores else 0
+    if not scores:
+        return {
+            "mean_score": 0,
+            "median_score": 0,
+            "std_dev": 0,
+            "min_score": 0,
+            "max_score": 0,
+            "ci_lower": 0,
+            "ci_upper": 0,
+            "chunk_count": 0
+        }
+
+    # Ensure all scores are native Python floats.
+    scores = [float(s) for s in scores]
+
+    mean_val = statistics.mean(scores)
+    median_val = statistics.median(scores)
     stdev_val = statistics.pstdev(scores) if len(scores) > 1 else 0
-    min_val = min(scores) if scores else 0
-    max_val = max(scores) if scores else 0
+    min_val = min(scores)
+    max_val = max(scores)
     n = len(scores)
-    # Compute 95% CI if n > 1
     ci_lower = ci_upper = mean_val
     if n > 1:
         ci_margin = 1.96 * (stdev_val / math.sqrt(n))
