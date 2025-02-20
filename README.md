@@ -55,15 +55,42 @@ the entire batch of samples.
 
 ### Batch Processing
 
-We have also added a batch processing feature that allows you to upload a CSV file containing text samples and get predictions and raw scores for each sample. The CSV file should have a column named "text" containing the text samples to be processed.
+1. **File Upload:**  
+   Upload a `.txt`, `.csv`, or `.xlsx` file containing your text samples.  
+   - **TXT Files:** The system generates multiple variants of each text using different strategies such as:
+     - **Beginning:** Remove paragraphs from the start.
+     - **End:** Remove paragraphs from the end.
+     - **Random:** Select random subsets of paragraphs.
+     - **Rolling:** Create overlapping segments based on a configurable word count threshold.
+   - **CSV/XLSX Files:** The file must include a column named `"text"`.
 
-To use the batch processing feature, run the following command:
+2. **Text Chunking & Variant Generation:**  
+   Each text sample is:
+   - **Cleaned:** Extra spaces and irregular newlines are normalized.
+   - **Chunked:** Using a sliding window approach to create overlapping text segments. This preserves contextual continuity and ensures each chunk is of an optimal length for the models.
+   - **Variant Expanded (for TXT):** Depending on the chosen method, different text variants are generated to explore detection performance across multiple sections of the text.
+
+3. **Batch Inference:**  
+   The system processes the text chunks in configurable batches (e.g., batch size of 8) to compute AI detection scores using the Binoculars models. This batch processing leverages available GPU resources for efficient computation.
+
+4. **Aggregation and Metrics Computation:**  
+   - **Chunk-Level Results:** Each chunk’s prediction and raw score are recorded.
+   - **Summary Statistics:** For each original text sample, the system aggregates chunk-level scores to compute statistics (mean, median, standard deviation, confidence intervals, etc.).
+   - **Visualization:** A histogram (via Plotly) displays the distribution of AI detection scores across chunks.
+
+5. **Interactive Results & Downloads:**  
+   The Gradio interface shows:
+   - A detailed table with per-chunk predictions.
+   - A summary table with aggregated statistics.
+   - Options to download both detailed and summary results as Excel files for further analysis.
+
+Launch the batch processing interface with:
 
 ```bash
-$ python batch_app.py
+python batch_app.py
 ```
 
-This will launch a Gradio interface where you can upload your CSV file and download the results.
+Adjust parameters like batch size, variant generation method, and chunk settings directly within the Gradio interface before processing your data.
 
 ### Demo
 
@@ -84,7 +111,7 @@ Binoculars (or any detector) without human supervision.
 ## File Descriptions
 
 - `app.py`: Launches the Gradio interface for the Binoculars AI text detection demo.
-- `batch_app.py`: Handles batch runs from CSV uploads and displays results using Gradio.
+- `batch_app.py`: Handles batch runs from TXT, CSV, and XLSX uploads and displays results using Gradio.
 - `binoculars/__init__.py`: Initializes the Binoculars package, providing the main class for AI text detection.
 - `binoculars/detector.py`: Contains the main class for AI text detection using the Binoculars method.
 - `binoculars/metrics.py`: Contains functions to compute perplexity and entropy metrics for AI text detection.
