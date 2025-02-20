@@ -173,11 +173,17 @@ def run_bino_on_df(df, batch_size, bino):
 def compute_statistics(scores):
     valid_scores = []
     for s in scores:
-        try:
-            valid_scores.append(float(s))
-        except (TypeError, ValueError):
-            # Skip invalid score values
+        # First ensure the score is not None
+        if s is None:
             continue
+        try:
+            val = float(s)
+        except (TypeError, ValueError):
+            continue
+        # Check for NaN or infinite values
+        if not math.isfinite(val):
+            continue
+        valid_scores.append(val)
 
     if not valid_scores:
         return {
