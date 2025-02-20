@@ -1,3 +1,9 @@
+"""
+This file contains the Gradio interface for the Binoculars AI text detection demo.
+It initializes the Binoculars model, defines functions for token counting, score computation, and prediction,
+and sets up the Gradio interface with input and output components.
+"""
+
 __all__ = ["app"]
 
 import gradio as gr
@@ -9,14 +15,41 @@ MINIMUM_TOKENS = 64
 
 
 def count_tokens(text):
+    """
+    Counts the number of tokens in the input text using the Binoculars tokenizer.
+
+    Args:
+        text (str): The input text to count tokens for.
+
+    Returns:
+        int: The number of tokens in the input text.
+    """
     return len(TOKENIZER(text).input_ids)
 
 
 def compute_raw_score(input_str):
+    """
+    Computes the raw Binoculars score for the input text.
+
+    Args:
+        input_str (str): The input text to compute the score for.
+
+    Returns:
+        float: The raw Binoculars score for the input text.
+    """
     return BINO.compute_score(input_str)
 
 
 def run_detector(input_str):
+    """
+    Runs the Binoculars detector on the input text and returns the prediction and raw score.
+
+    Args:
+        input_str (str): The input text to run the detector on.
+
+    Returns:
+        tuple: The prediction and raw score for the input text.
+    """
     if count_tokens(input_str) < MINIMUM_TOKENS:
         gr.Warning(f"Too short length. Need minimum {MINIMUM_TOKENS} tokens to run Binoculars.")
         return "", ""
@@ -26,6 +59,15 @@ def run_detector(input_str):
 
 
 def change_mode(mode):
+    """
+    Changes the mode of the Binoculars detector.
+
+    Args:
+        mode (str): The mode to change to ("Low False Positive Rate" or "High Accuracy").
+
+    Returns:
+        str: The selected mode.
+    """
     if mode == "Low False Positive Rate":
         BINO.change_mode("low-fpr")
     elif mode == "High Accuracy":
@@ -124,3 +166,7 @@ with gr.Blocks(css=css,
     submit_button.click(run_detector, inputs=input_box, outputs=[output_text, raw_score_text])
     clear_button.click(lambda: ("", "", ""), outputs=[input_box, output_text, raw_score_text])
     dropdown_mode.change(change_mode, inputs=[dropdown_mode], outputs=[dropdown_mode])
+
+if __name__ == "__main__":
+    # Launch the Gradio interface
+    app.launch(show_api=False, debug=True, share=True)

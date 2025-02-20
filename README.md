@@ -53,6 +53,18 @@ print(bino.predict(sample_string))  # 'Most likely AI-Generated'
 In the above code, user can also pass a `list` of `str` to `compute_score` and `predict` methods to get results for
 the entire batch of samples.
 
+### Batch Processing
+
+We have also added a batch processing feature that allows you to upload a CSV file containing text samples and get predictions and raw scores for each sample. The CSV file should have a column named "text" containing the text samples to be processed.
+
+To use the batch processing feature, run the following command:
+
+```bash
+$ python batch_app.py
+```
+
+This will launch a Gradio interface where you can upload your CSV file and download the results.
+
 ### Demo
 
 We have also made a demo available to predict AI-generated text interactively with a simple UI
@@ -68,6 +80,21 @@ All AI-generated text detectors aim for accuracy, but none are perfect and can h
 Binoculars is more proficient in detecting English language text compared to other languages). This implementation is
 for academic purposes only and should not be considered as a consumer product. We also strongly caution against using
 Binoculars (or any detector) without human supervision.
+
+## File Descriptions
+
+- `app.py`: Launches the Gradio interface for the Binoculars AI text detection demo.
+- `batch_app.py`: Handles batch runs from CSV uploads and displays results using Gradio.
+- `binoculars/__init__.py`: Initializes the Binoculars package, providing the main class for AI text detection.
+- `binoculars/detector.py`: Contains the main class for AI text detection using the Binoculars method.
+- `binoculars/metrics.py`: Contains functions to compute perplexity and entropy metrics for AI text detection.
+- `binoculars/utils.py`: Contains utility functions for the Binoculars package.
+- `demo/demo.py`: Contains the Gradio interface for the Binoculars AI text detection demo.
+- `experiments/jobs.sh`: Runs experiments for the CC News, CNN, and PubMed datasets with generations from the LLaMA-2-13B model.
+- `experiments/run.py`: Runs the Binoculars AI text detection on a given dataset and computes relevant metrics.
+- `experiments/utils.py`: Contains utility functions for the Binoculars package.
+- `main.py`: Demonstrates the usage of the Binoculars class for detecting AI-generated text.
+- `README.md`: Provides an overview of the Binoculars project, installation instructions, usage examples, and file descriptions.
 
 ## Cite our work
 
