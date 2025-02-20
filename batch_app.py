@@ -444,12 +444,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--observer", default="tiiuae/falcon-7b", help="Observer model name or path")
     parser.add_argument("--performer", default="tiiuae/falcon-7b-instruct", help="Performer model name or path")
+    parser.add_argument("--cache_dir", default="/content/drive/MyDrive/model_cache", help="Directory to cache models in Google Drive")
     args = parser.parse_args()
 
     try:
         bino = Binoculars(
             observer_name_or_path=args.observer,
-            performer_name_or_path=args.performer
+            performer_name_or_path=args.performer,
+            cache_dir=args.cache_dir
         )
     except Exception as e:
         raise SystemExit(f"Failed to initialize Binoculars: {e}")
